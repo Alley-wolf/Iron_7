@@ -17,10 +17,14 @@ import time
 import asyncio
 import re
 import base64
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from fastapi import FastAPI, Request
 from fastapi.responses import Response
 from gtts import gTTS
+from deepface import DeepFace
+import numpy as np
+import cv2
 
 app = FastAPI()
 
@@ -101,19 +105,25 @@ UNKNOWN_FACE_WAV   = generate_alert_wav("Unregistered face detected.")
 KILL_UNKNOWN_WAV   = generate_alert_wav("Unknown subject detected. Threat status unconfirmed.", tld="com.au")
 print("Alert WAVs ready!")
 
-# ── Pre-warm DeepFace ─────────────────────────────────────────
-print("Pre-loading DeepFace models...")
-try:
-    from deepface import DeepFace
-    import numpy as np
-    import cv2
-    dummy = np.ones((224, 224, 3), dtype=np.uint8) * 128
-    cv2.imwrite("dummy.jpg", dummy)
-    DeepFace.analyze("dummy.jpg", actions=["age"], enforce_detection=False, silent=True)
-    os.unlink("dummy.jpg")
-    print("DeepFace ready!")
-except Exception as e:
-    print(f"DeepFace pre-warm error: {e}")
+# ── DeepFace background warmup ────────────────────────────────
+deepface_ready = False
+
+def _warmup_deepface():
+    global deepface_ready
+    print("Pre-loading DeepFace models in background...")
+    try:
+        dummy = np.ones((224, 224, 3), dtype=np.uint8) * 128
+        cv2.imwrite("/tmp/dummy.jpg", dummy)
+        DeepFace.analyze("/tmp/dummy.jpg", actions=["age"], enforce_detection=False, silent=True)
+        os.unlink("/tmp/dummy.jpg")
+        deepface_ready = True
+        print("DeepFace ready!")
+    except Exception as e:
+        print(f"DeepFace pre-warm error: {e}")
+
+@app.on_event("startup")
+async def startup_event():
+    threading.Thread(target=_warmup_deepface, daemon=True).start()
 
 conversation_history = []
 watch_mode = False
