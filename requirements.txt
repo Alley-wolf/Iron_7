@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+anthropic
+groq
+gtts
+deepface
+tf-keras
+opencv-python-headless
+numpy
+requests
